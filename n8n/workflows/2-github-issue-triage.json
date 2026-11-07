@@ -1,0 +1,330 @@
+{
+  "id": "IssueTriage00001",
+  "name": "2 · GitHub Issue Triage (local Ollama)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 2 · GitHub Issue Triage\nFetches the newest open issues of any public repo, lets a **local** model label them (bug / feature / question / docs), set a priority and write a one-line summary.\n\nChange **repo** in Config, then Execute workflow.",
+        "width": 460,
+        "height": 300,
+        "color": 5
+      },
+      "id": "26b6f82b-c28a-49f3-aa81-7b9b3e09a25d",
+      "name": "Note 0",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -260
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "bc7ba938-059b-4fa8-86a8-b3e51e725d7c",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8f20c48f-0391-4a34-abc1-9652aca23de0",
+              "name": "repo",
+              "value": "n8n-io/n8n",
+              "type": "string"
+            },
+            {
+              "id": "368a3cf1-6e33-4e2b-b911-5e3a4750b023",
+              "name": "discord_webhook",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "97698b76-4888-4610-becc-622f1d5c531a",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -240,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $json.repo }}/issues",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "state",
+              "value": "open"
+            },
+            {
+              "name": "per_page",
+              "value": "15"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "User-Agent",
+              "value": "n8n-ollama-demo"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "04e89ee3-daca-480a-ba79-a944f2286480",
+      "name": "Get open issues",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all()\n  .filter(i => !i.json.pull_request)\n  .slice(0, 5)\n  .map(i => ({ json: {\n    number: i.json.number,\n    title: i.json.title,\n    body: (i.json.body || '').slice(0, 1500),\n    url: i.json.html_url,\n  } }));"
+      },
+      "id": "8b5b6a45-7bbb-4d64-8aa1-d0265fbe77c1",
+      "name": "Skip PRs, keep 5",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Triage this GitHub issue. Answer in exactly three lines, nothing else:\nLABEL: bug, feature, question or docs\nPRIORITY: high, medium or low\nSUMMARY: one short sentence\n\nTITLE: {{ $json.title }}\n\nBODY:\n{{ $json.body }}"
+      },
+      "id": "3fcd81c1-54df-4f09-a496-19387a29ccf3",
+      "name": "Triage with local AI",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        460,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "5adabc57-81c6-4531-81f0-3eae0ccbcd0d",
+      "name": "Ollama Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        460,
+        400
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "LocalOllama00001",
+          "name": "Local Ollama"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const issues = $('Skip PRs, keep 5').all();\nconst icon = { bug: '🐞', feature: '✨', question: '❓', docs: '📚' };\nconst rows = $input.all().map((item, i) => {\n  const t = item.json.text || '';\n  const get = (k) => ((t.match(new RegExp(k + ':\\\\s*(.+)', 'i')) || [])[1] || '?').trim();\n  const label = get('LABEL').toLowerCase().replace(/[^a-z]/g, '');\n  const issue = issues[i].json;\n  return {\n    number: issue.number, label, priority: get('PRIORITY').toLowerCase(), summary: get('SUMMARY'), url: issue.url,\n    line: `${icon[label] || '•'} #${issue.number} [${label} · ${get('PRIORITY').toLowerCase()}] ${get('SUMMARY')}\\n<${issue.url}>`,\n  };\n});\nconst repo = $('Config').first().json.repo;\nreturn [{ json: { rows, message: `**🧭 Issue triage for ${repo}**\\n\\n` + rows.map(r => r.line).join('\\n') } }];"
+      },
+      "id": "0659df75-6ac8-4873-a44f-3ee24ca5be83",
+      "name": "Build triage report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4b7d35a3-ef7c-42f3-b526-eeed5f9f86d4",
+              "leftValue": "={{ $('Config').first().json.discord_webhook }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "76b35616-6537-49ae-a253-e44978208f18",
+      "name": "Discord webhook set?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1020,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.discord_webhook }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ content: $json.message.slice(0, 1900) }) }}",
+        "options": {}
+      },
+      "id": "0f96b8b1-db37-42db-99c1-3a8b987974ad",
+      "name": "Post to Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1280,
+        60
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "0e3af57a-baae-48a1-a0e0-082dcd59f253",
+      "name": "Show result here",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        260
+      ]
+    }
+  ],
+  "connections": {
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Get open issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get open issues": {
+      "main": [
+        [
+          {
+            "node": "Skip PRs, keep 5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip PRs, keep 5": {
+      "main": [
+        [
+          {
+            "node": "Triage with local AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Triage with local AI",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Triage with local AI": {
+      "main": [
+        [
+          {
+            "node": "Build triage report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build triage report": {
+      "main": [
+        [
+          {
+            "node": "Discord webhook set?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discord webhook set?": {
+      "main": [
+        [
+          {
+            "node": "Post to Discord",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Show result here",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}

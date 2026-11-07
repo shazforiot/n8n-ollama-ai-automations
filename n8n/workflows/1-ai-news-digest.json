@@ -1,0 +1,374 @@
+{
+  "id": "NewsDigest000001",
+  "name": "1 · AI News Digest → Discord (local Ollama)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 1 · AI News Digest\nReads a news feed, summarises the top stories with a **local** model (Ollama) and posts the digest to Discord.\n\n1. Open **Config** → paste your Discord webhook URL (optional)\n2. Click **Execute workflow**\n3. **Publish** to run it every morning at 8:00",
+        "width": 460,
+        "height": 300,
+        "color": 5
+      },
+      "id": "eec86c9f-4654-4423-a942-132f9ffdba4c",
+      "name": "Note 0",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -260
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "2cdd8e62-1760-4b2f-a025-7f90fe7e98d3",
+      "name": "Run now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "943fde99-8601-40bd-a949-179eb97b281c",
+      "name": "Every morning 8:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -480,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d4a7de1a-8f7e-4f51-9d46-0f28cf583b2e",
+              "name": "feed_url",
+              "value": "https://hnrss.org/frontpage",
+              "type": "string"
+            },
+            {
+              "id": "55d64da6-a21c-4267-8bbc-7e15b7ee3a15",
+              "name": "max_stories",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "143fafe1-ed8a-4f28-abf5-360e7ed6208b",
+              "name": "discord_webhook",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8ee02d97-20b4-44f3-befd-42c6194da1ff",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -240,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.feed_url }}",
+        "options": {}
+      },
+      "id": "1d564e99-b4b0-4b6e-8d67-b6f6e5ced904",
+      "name": "Read news feed",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "maxItems": 5
+      },
+      "id": "33dfc9fe-7a11-4d4e-9298-26b03a4fa069",
+      "name": "Top stories",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        220,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const stories = $input.all().map((item, i) => {\n  const s = item.json;\n  const snippet = (s.contentSnippet || s.content || '').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 280);\n  return `${i + 1}. ${s.title}\\n${snippet}\\n${s.link}`;\n});\nreturn [{ json: { stories: stories.join('\\n\\n') } }];"
+      },
+      "id": "a423e00c-158f-4d1c-87bc-86068d687ebf",
+      "name": "Build story list",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a tech news editor. Write a short morning digest of these stories.\nFor each story: one bold headline, one sentence on why it matters, then the link.\nNo intro, no outro. Use Discord markdown.\n\nSTORIES:\n{{ $json.stories }}"
+      },
+      "id": "cb7decbd-dbae-44fc-bc97-015e5974cd59",
+      "name": "Summarise with local AI",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        680,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "59afcd8d-9881-4268-b48d-cb5404a28d7a",
+      "name": "Ollama Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        680,
+        400
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "LocalOllama00001",
+          "name": "Local Ollama"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "181b3a0c-23bb-48dc-9f0a-08a8f858d87d",
+              "name": "message",
+              "value": "=**🗞️ Morning AI digest** ({{ $now.toFormat('dd LLL yyyy') }})\n\n{{ $json.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "296fa5bc-7b70-479f-91f6-ddffd1a2baa1",
+      "name": "Format message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1000,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2c97ef9f-c812-40c7-997a-91163b0f3ac6",
+              "leftValue": "={{ $('Config').first().json.discord_webhook }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a11fd6bd-803d-42f7-bc1c-1d42020e2b21",
+      "name": "Discord webhook set?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1240,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.discord_webhook }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ content: $json.message.slice(0, 1900) }) }}",
+        "options": {}
+      },
+      "id": "5c9b1ce0-5aec-400f-bf29-42d140bf4b65",
+      "name": "Post to Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1500,
+        60
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "60a467e2-285c-49ac-af0f-5d8bc6d626c8",
+      "name": "Show result here",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        260
+      ]
+    }
+  ],
+  "connections": {
+    "Run now": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every morning 8:00": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Read news feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read news feed": {
+      "main": [
+        [
+          {
+            "node": "Top stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Top stories": {
+      "main": [
+        [
+          {
+            "node": "Build story list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build story list": {
+      "main": [
+        [
+          {
+            "node": "Summarise with local AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Summarise with local AI",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarise with local AI": {
+      "main": [
+        [
+          {
+            "node": "Format message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format message": {
+      "main": [
+        [
+          {
+            "node": "Discord webhook set?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discord webhook set?": {
+      "main": [
+        [
+          {
+            "node": "Post to Discord",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Show result here",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}

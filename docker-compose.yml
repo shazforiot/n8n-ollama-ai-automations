@@ -1,0 +1,144 @@
+# n8n + Ollama: free, local AI automations
+# Start with ONE of these profiles (the scripts in ./scripts do this for you):
+#   cpu         Ollama in Docker on the CPU (works everywhere, slower)
+#   gpu-nvidia  Ollama in Docker on an NVIDIA GPU (Windows/WSL2/Linux with NVIDIA drivers + container toolkit)
+#   host        Use the Ollama app already installed on your computer (set OLLAMA_BASE_URL in .env)
+
+name: n8n-ollama
+
+volumes:
+  n8n_storage:
+  postgres_storage:
+  ollama_storage:
+
+networks:
+  ai:
+
+x-n8n: &n8n-base
+  image: n8nio/n8n:${N8N_VERSION:-stable}
+  networks: [ai]
+  env_file: .env
+  environment:
+    - DB_TYPE=postgresdb
+    - DB_POSTGRESDB_HOST=postgres
+    - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+    - DB_POSTGRESDB_USER=${POSTGRES_USER}
+    - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+    - N8N_DIAGNOSTICS_ENABLED=false
+    - N8N_PERSONALIZATION_ENABLED=false
+    - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-UTC}
+    - TZ=${GENERIC_TIMEZONE:-UTC}
+  extra_hosts:
+    - "host.docker.internal:host-gateway"   # lets the "host" profile reach Ollama on your computer (Linux/WSL)
+
+x-ollama: &ollama-base
+  image: ollama/ollama:${OLLAMA_VERSION:-latest}
+  container_name: ollama
+  networks: [ai]
+  restart: unless-stopped
+  ports:
+    - "11434:11434"
+  volumes:
+    - ollama_storage:/root/.ollama
+  healthcheck:
+    test: ["CMD", "ollama", "list"]
+    interval: 5s
+    timeout: 5s
+    retries: 30
+
+x-ollama-pull: &ollama-pull
+  image: ollama/ollama:${OLLAMA_VERSION:-latest}
+  container_name: ollama-pull
+  networks: [ai]
+  volumes:
+    - ollama_storage:/root/.ollama
+  environment:
+    - OLLAMA_HOST=ollama:11434
+  entrypoint: /bin/sh
+  command:
+    - -c
+    - |
+      echo "Pulling chat model ${CHAT_MODEL} and embedding model ${EMBED_MODEL} (first run only, a few GB)..."
+      ollama pull ${CHAT_MODEL} && ollama pull ${EMBED_MODEL} && echo "MODELS READY"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    networks: [ai]
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_storage:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot: imports the Ollama credential + the 3 demo workflows on the very first start
+  n8n-import:
+    <<: *n8n-base
+    container_name: n8n-import
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        if [ -n "$(n8n list:workflow --onlyId 2>/dev/null)" ]; then
+          echo "Workflows already imported, skipping."; exit 0
+        fi
+        sed "s#__OLLAMA_BASE_URL__#$${OLLAMA_BASE_URL}#" /demo/credentials/ollama.json > /tmp/ollama.json
+        n8n import:credentials --input=/tmp/ollama.json && \
+        n8n import:workflow --separate --input=/demo/workflows && \
+        echo "IMPORT DONE"
+    volumes:
+      - ./n8n:/demo:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  n8n:
+    <<: *n8n-base
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_storage:/home/node/.n8n
+      - ./files:/home/node/.n8n-files      # n8n 2.x may only read/write files here
+    depends_on:
+      postgres:
+        condition: service_healthy
+      n8n-import:
+        condition: service_completed_successfully
+
+  ollama-cpu:
+    <<: *ollama-base
+    profiles: ["cpu"]
+
+  ollama-gpu:
+    <<: *ollama-base
+    profiles: ["gpu-nvidia"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  ollama-pull-cpu:
+    <<: *ollama-pull
+    profiles: ["cpu"]
+    depends_on:
+      ollama-cpu:
+        condition: service_healthy
+
+  ollama-pull-gpu:
+    <<: *ollama-pull
+    profiles: ["gpu-nvidia"]
+    depends_on:
+      ollama-gpu:
+        condition: service_healthy

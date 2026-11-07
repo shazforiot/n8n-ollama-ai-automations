@@ -1,0 +1,308 @@
+{
+  "id": "ChatWithPdfs0001",
+  "name": "3 · Chat with your PDFs (local RAG)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 3 · Chat with your PDFs\n**Step A** · Put PDFs in `files/docs` and click **Execute workflow** on *Load PDFs*: they are split, embedded with `nomic-embed-text` and stored in memory.\n\n**Step B** · Click **Open chat** and ask questions. The agent searches your PDFs first and answers with a local model.\n\n⚠️ Simple Vector Store lives in RAM: run Step A again after a restart.",
+        "width": 520,
+        "height": 320,
+        "color": 5
+      },
+      "id": "d13917d3-48bd-464a-92d4-a8de85dee20d",
+      "name": "Note 0",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -340
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "30d79044-fed5-4fbb-941b-1ded9393df09",
+      "name": "Load PDFs",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "fileSelector": "/home/node/.n8n-files/docs/*.pdf",
+        "options": {}
+      },
+      "id": "d3eff258-d4b1-4419-86e2-b427d6fc941a",
+      "name": "Read PDFs from files/docs",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        -240,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "id",
+          "value": "pdf_docs"
+        },
+        "clearStore": true
+      },
+      "id": "f34de2ab-29ca-4079-ae29-819782d0dd6d",
+      "name": "Store in vector memory",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        40,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text"
+      },
+      "id": "cdb44e3c-0dea-4b73-a23b-eb861fcae0ed",
+      "name": "Embeddings (Ollama)",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        -20,
+        380
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "LocalOllama00001",
+          "name": "Local Ollama"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "options": {}
+      },
+      "id": "a543288b-11da-4185-9f19-02aaaa62cce7",
+      "name": "Default Data Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        200,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "0b539ec3-2b99-445b-a6e4-c7ad0a400b4b",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -480,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You answer questions about the user's own PDF documents.\nAlways call the company_docs tool first and answer only from what it returns.\nIf the answer is not in the documents, say you could not find it.\nKeep answers short and mention which document the answer came from."
+        }
+      },
+      "id": "64cf0fcb-c9ee-43c5-af87-cb1379caf9a9",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -180,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama3.2",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "21516534-628c-45a6-9ad0-ec739b864640",
+      "name": "Ollama Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -320,
+        900
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "LocalOllama00001",
+          "name": "Local Ollama"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 6
+      },
+      "id": "42d22b22-c503-4c4b-a34e-a04223dab93f",
+      "name": "Simple Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -160,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Search the user's PDF documents (handbook, FAQ, policies). Use it for every question.",
+        "memoryKey": {
+          "__rl": true,
+          "mode": "id",
+          "value": "pdf_docs"
+        },
+        "topK": 4
+      },
+      "id": "47956abb-8f2b-4ab3-8412-23fdc861e137",
+      "name": "company_docs",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1.3,
+      "position": [
+        40,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text"
+      },
+      "id": "95acebe7-9e17-4e7e-b558-c707af89fc1c",
+      "name": "Embeddings (Ollama) ",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        40,
+        1120
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "LocalOllama00001",
+          "name": "Local Ollama"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Load PDFs": {
+      "main": [
+        [
+          {
+            "node": "Read PDFs from files/docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read PDFs from files/docs": {
+      "main": [
+        [
+          {
+            "node": "Store in vector memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings (Ollama)": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Store in vector memory",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Store in vector memory",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "company_docs": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings (Ollama) ": {
+      "ai_embedding": [
+        [
+          {
+            "node": "company_docs",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}
